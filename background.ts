@@ -2,14 +2,33 @@ import tabId = chrome.devtools.inspectedWindow.tabId;
 
 export {}
 
-//获取所有tabs
+let tempWindow;
 
+//获取所有tabs
 chrome.tabs.query({}).then(res => console.log(res))
 
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.action === 'createTempWindow') {
-        //获取所有tabs中是否有tempWindow
+    if (message?.action === 'getTempWindowId') {
+        if (!tempWindow) {
+            chrome.windows.create({
+                focused: false,
+                type: 'normal',
+                url: message.url
+            }).then(res => {
 
+                tempWindow = res
+                sendResponse(tempWindow.id)
+
+            })
+        } else {
+            sendResponse(tempWindow.id)
+        }
+    }
+})
+
+chrome.windows.onRemoved.addListener(windowId => {
+    if (tempWindow && tempWindow.id === windowId) {
+        tempWindow = null;
     }
 })

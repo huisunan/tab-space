@@ -1,15 +1,14 @@
 import React from "react";
 
-import {Button, List, Tabs} from "antd"
+import {Button, Input, List, Modal, Tabs} from "antd"
 
 interface State {
     tabs: chrome.tabs.Tab[]
     workSpaces: WorkSpace[]
-    tempWindow?: chrome.windows.Window
+    addModal?: boolean
 }
 
 class Options extends React.Component<any, State> {
-
 
     constructor(props) {
         super(props);
@@ -43,40 +42,7 @@ class Options extends React.Component<any, State> {
         chrome.tabs.onCreated.addListener(tabId => this.refreshTabs())
         chrome.tabs.onUpdated.addListener(tabId => this.refreshTabs())
         chrome.tabs.onRemoved.addListener(tabId => this.refreshTabs())
-        this.refreshTabs().then(() => {
-            //获取当前tab的地址
-            chrome.tabs.query({
-                active: true,
-                lastFocusedWindow: true
-            }).then(nowTabs => {
-                const nowTab = nowTabs[0]
-                if (!nowTab.pinned) {
-                    chrome.tabs.update(nowTab.id, {pinned: true})
-                }
-                const tempTabUrl = nowTab.url + "?temp=true";
-                const tempTab = this.state.tabs.find(i => i.url === tempTabUrl);
-                if (tempTab) {
-                    chrome.windows.get(tempTab.windowId).then(tempWindow => {
-                        this.setState({
-                            tempWindow
-                        })
-                    })
-                } else {
-                    //创建临时
-                    chrome.windows.create({
-                        focused: false,
-                        state: 'normal',
-                        type: 'normal',
-                        url: tempTabUrl
-                    }).then(tempWindow => {
-                        this.setState({
-                            tempWindow
-                        })
-                    })
-                }
-            })
-        })
-
+        this.refreshTabs()
     }
 
 
@@ -129,22 +95,29 @@ class Options extends React.Component<any, State> {
     }
 
 
-    private moveTabWindow(predicate: (tab: chrome.tabs.Tab) => boolean) {
-        //当前窗口id
-        chrome.windows.getCurrent().then(currentWindow => {
+    async moveTabWindow(predicate: (tab: chrome.tabs.Tab) => boolean) {
 
-            //遍历所有tab
-            this.state.tabs.forEach(tab => {
-                if (tab.windowId === currentWindow.id && tab.active) {
-                    return;
-                }
-                const move = predicate(tab);
-                chrome.tabs.move(tab.id, {
-                    index: 1,
-                    windowId: move ? currentWindow.id : this.state.tempWindow.id
+        //获取临时窗口
+        let location = window.location;
+        chrome.runtime.sendMessage({
+            action: "getTempWindowId",
+            url: location + "?temp=true"
+        }).then(tempWindowId => {
+            //当前窗口id
+            let index = 1
+            chrome.windows.getCurrent().then(currentWindow => {
+                //遍历所有tab
+                this.state.tabs.filter(i => !i.url?.startsWith(location.origin)).forEach(tab => {
+                    const move = predicate(tab);
+                    chrome.tabs.move(tab.id, {
+                        index: index++,
+                        windowId: move ? currentWindow.id : tempWindowId
+                    })
                 })
             })
         })
+
+
     }
 
     render() {
@@ -152,6 +125,9 @@ class Options extends React.Component<any, State> {
         return (
             <div>
                 <Button type="primary" onClick={() => this.unNameClick()}>未命名空间</Button>
+                <Button type="primary" onClick={() => this.setState({addModal: true})}>新增</Button>
+                <Modal title="新增工作空间" open={this.state.addModal}>
+                </Modal>
                 <Tabs tabPosition="left"
                       onChange={(key) => this.tabChange(key)}
                       items={
@@ -159,7 +135,6 @@ class Options extends React.Component<any, State> {
                               return {
                                   label: i.name,
                                   key: i.name,
-
                                   children: <List
                                       dataSource={i.items}
                                       renderItem={(item) => (
